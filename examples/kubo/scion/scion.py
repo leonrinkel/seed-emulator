@@ -140,18 +140,13 @@ while nruns > 0:
         print(output)
         if '100 MiB) copied' not in output: raise
 
-        _, output = ctrs[name_a].exec_run('/kubo/cmd/ipfs/ipfs add testfile')
-        output = output.decode('utf8').splitlines()[-3]
+        _, output = ctrs[name_a].exec_run('/kubo/cmd/ipfs/ipfs add -q testfile')
+        output = output.decode('utf8').splitlines()[0]
         print(output)
-        if 'added' not in output: raise
-
-        # CID of added test content
-        cid = output.split()[1]
-        print(cid)
-        if not cid.startswith('Qm'): raise
+        if not output.startswith('Qm'): raise
 
         # Try to retrieve content
-        _, output = ctrs[name_b].exec_run(f'time -f %e /kubo/cmd/ipfs/ipfs get {cid}')
+        _, output = ctrs[name_b].exec_run(f'time -f %e /kubo/cmd/ipfs/ipfs get {output}')
         results.append(output.decode('utf8').splitlines()[-1])
 
         # Shut the network down
