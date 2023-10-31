@@ -142,8 +142,9 @@ while nruns > 0:
         print(json.dumps(kubos, sort_keys=True, indent=4))
         print(json.dumps(id2asn, sort_keys=True, indent=4))
 
-        # Interconnect kubos
-        for name, ctr in sorted(ctrs.items(), key=lambda x: random.random()):
+
+        # Set hops
+        for name, ctr in ctrs.items():
             if 'kubo' not in name:
                 continue
 
@@ -168,10 +169,27 @@ while nruns > 0:
                 print(output)
                 if 'success' not in output: raise
 
-                _, output = ctr.exec_run(f'/kubo/cmd/ipfs/ipfs swarm connect {peer_addr}')
-                output = output.decode('utf8').splitlines()[0]
-                print(output)
-                if 'success' not in output: raise
+        # Interconnect kubos
+        connected_pairs = []
+        for name, ctr in sorted(ctrs.items(), key=lambda x: random.random()):
+            if 'kubo' not in name:
+                continue
+
+            for peer_name, peer_addr in sorted(kubos.items(), key=lambda x: random.random()):
+                if name == peer_name:
+                    continue
+
+                if (name, peer_name) in connected_pairs: continue
+                if (peer_name, name) in connected_pairs: continue
+
+                for j in range(3):
+                    _, output = ctr.exec_run(f'/kubo/cmd/ipfs/ipfs swarm connect {peer_addr}')
+                    output = output.decode('utf8').splitlines()[0]
+                    print(output)
+                    if 'success' not in output: continue
+                    else:
+                        connected_pairs.append((name, peer_name))
+                        break
 
         dht_distances = dict()
 
@@ -191,11 +209,10 @@ while nruns > 0:
             print(my_asn)
             if my_asn not in [ 150, 151, 152 ]: raise
 
-            dht_distances[my_asn] = \
+            dht_distances[name] = \
                 [ abs(my_asn - id2asn[peer]) for peer in dht_peers ]
 
-        # Shut the network down
-        whales.compose.down()
+        print('this run seems to have succeeded')
 
         results.append({
             'kubos': kubos,
@@ -206,5 +223,8 @@ while nruns > 0:
     except Exception as e:
         print('this run seems to have failed', e)
         pass
+    finally:
+        # Shut the network down
+        whales.compose.down()
 
 print(results)
