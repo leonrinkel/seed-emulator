@@ -224,7 +224,9 @@ while nruns > 0:
         print('this run seems to have failed', e)
         pass
     finally:
-        # Shut the network down
-        whales.compose.down()
+        try:
+            # Shut the network down
+            whales.compose.down()
+        except: pass
 
 print(results)
