@@ -98,14 +98,13 @@ emu.compile(Docker(), './output')
 
 # Build Docker containers and run the network
 whales = python_on_whales.DockerClient(compose_files=['./output/docker-compose.yml'])
-whales.compose.build()
+whales.compose.build(cache=False)
 
 id_pattern = r'.*(12D3KooW[^\s]+).*'
 asn_pattern = r'.*/scion/1-(\d+),.*'
+time_pattern = r'^peer lookup took (.+)$'
 
-nruns = 1
-results = []
-
+nruns = 10
 while nruns > 0:
     whales.compose.up(detach=True)
 
@@ -117,6 +116,7 @@ while nruns > 0:
     time.sleep(10)
 
     kubos = dict()
+    name2id = dict()
     id2asn = dict()
 
     try:
@@ -134,12 +134,15 @@ while nruns > 0:
             peer_id = re.match(id_pattern, output).group(1)
             print(peer_id)
             if len(peer_id) != 52: raise
+            name2id[name] = peer_id
+
             asn = int(re.match(asn_pattern, output).group(1))
             print(asn)
             if asn not in [ 150, 151, 152 ]: raise
             id2asn[peer_id] = asn
 
         print(json.dumps(kubos, sort_keys=True, indent=4))
+        print(json.dumps(name2id, sort_keys=True, indent=4))
         print(json.dumps(id2asn, sort_keys=True, indent=4))
 
         # Interconnect kubos
@@ -164,6 +167,7 @@ while nruns > 0:
                         connected_pairs.append((name, peer_name))
                         break
 
+        dht_peers = []
         dht_distances = dict()
 
         # Collect DHT peers
@@ -185,13 +189,39 @@ while nruns > 0:
             dht_distances[name] = \
                 [ abs(my_asn - id2asn[peer]) for peer in dht_peers ]
 
+        # Pick two nodes to run lookup
+        (name_a, addr_a), (name_b, addr_b) = \
+                sorted(kubos.items(), key=lambda x: random.random())[:2]
+        id_b = name2id[name_b]
+
+        # Run DHT lookup
+        print(f'{name_a} running dht lookup {id_b}')
+        _, output = ctrs[name_a].exec_run(f'/kubo/cmd/ipfs/ipfs scionping {id_b}')
+        output = output.decode('utf8').splitlines()
+        print(output)
+        if 'found peer' not in output[-3]: raise
+        if 'peer lookup took' not in output[-2]: raise
+
+        lookup_time = re.match(time_pattern, output[-2]).group(1)
+        print(lookup_time)
+
         print('this run seems to have succeeded')
 
-        results.append({
-            'kubos': kubos,
-            'id2asn': id2asn,
-            'distances': dht_distances,
-        })
+        # Dump result
+        filename = f'nosort-{int(time.time())}.json'
+        with open(filename, 'w', encoding='utf-8') as file:
+            result = {
+                'kubos': kubos,
+                'name2id': name2id,
+                'id2asn': id2asn,
+                'dhtpeers': dht_peers,
+                'distances': dht_distances,
+                'name_a': name_a,
+                'name_b': name_b,
+                'lookup_time': lookup_time,
+            }
+            json.dump(result, file, indent=4)
+
         nruns = nruns - 1
     except Exception as e:
         print('this run seems to have failed', e)
@@ -201,5 +231,3 @@ while nruns > 0:
             # Shut the network down
             whales.compose.down()
         except: pass
-
-print(results)
