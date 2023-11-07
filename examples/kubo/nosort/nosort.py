@@ -145,6 +145,16 @@ while nruns > 0:
         print(json.dumps(name2id, sort_keys=True, indent=4))
         print(json.dumps(id2asn, sort_keys=True, indent=4))
 
+        # Set link parameters
+        for name, ctr in ctrs.items():
+            if 'br0' not in name:
+                continue
+
+            exit_code, _ = ctr.exec_run('tc qdisc del dev ix100 root')
+            if exit_code != 0: raise
+            exit_code, _ = ctr.exec_run('tc qdisc add dev ix100 root netem rate 100mbit delay 10ms loss 0%')
+            if exit_code != 0: raise
+
         # Interconnect kubos
         connected_pairs = []
         for name, ctr in sorted(ctrs.items(), key=lambda x: random.random()):
